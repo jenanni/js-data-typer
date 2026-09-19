@@ -1,6 +1,15 @@
 # js-data-typer
 
-Runtime validation and coercion for JavaScript. Invalid **input** returns a Result object. Invalid **schemas** throw. No dependencies. Node 18+.
+A small **payload typer for JavaScript APIs**: validate and coerce `req.body` / `req.query` with a plain object schema, then read the result as a Result (`{ ok, data }` / `{ ok: false, error }`).
+
+Built for Node/Express-style controllers where you want:
+
+- schema as a plain object (`type`, `required`, `desc`), not a fluent chain
+- coercion out of the box (`"12"` → number, `"19/09/2026"` → `Date`)
+- bad **input** as a return value, not a throw
+- zero dependencies and ESM
+
+It is **not** a TypeScript-first schema library (use Zod for that), not a form library (Yup), and not JSON Schema (Ajv). Invalid **schemas** still throw `SchemaError`.
 
 The published package is JavaScript (`src/*.js`). `types/index.d.ts` is only a declaration file so TypeScript projects get autocomplete; it is not the runtime.
 

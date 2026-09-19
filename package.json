@@ -1,7 +1,7 @@
 {
   "name": "js-data-typer",
   "version": "0.2.0",
-  "description": "Runtime validation and coercion with Result objects. Throws only on bad schemas; invalid input returns { ok: false }.",
+  "description": "Payload typer for JavaScript APIs: plain-object schemas, coercion, and Result returns. Throws only on bad schemas.",
   "type": "module",
   "main": "./src/index.js",
   "types": "./types/index.d.ts",
