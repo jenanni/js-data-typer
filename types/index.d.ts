@@ -56,7 +56,11 @@ export interface FieldSchema {
   required?: boolean
   notNull?: boolean
   default?: unknown
-  /** Inline value when `validate()` is called without data. */
+  /**
+   * Inline value. Merged with `validate(data)` per key:
+   * a defined inline wins; `undefined` falls back to `data[key]`.
+   * `null` is defined and wins over data.
+   */
   value?: unknown
   positive?: boolean
   negative?: boolean
@@ -65,6 +69,11 @@ export interface FieldSchema {
   trim?: boolean
   lowercase?: boolean
   toLowerCase?: boolean
+  /**
+   * For integer/decimal/string/array: a finite number.
+   * For date: Date, parseable date string, `'today'`, or `'now'`.
+   * For timestamp: Date, parseable timestamp, epoch ms, `'today'`, or `'now'`.
+   */
   min?: number | string | Date | 'today' | 'now'
   max?: number | string | Date | 'today' | 'now'
   roundTo?: number
@@ -104,12 +113,6 @@ export function typer<T = Record<string, unknown>>(
   schema: Schema,
   options?: TyperOptions,
 ): Typer<T>
-
-export function toStatus<T extends Record<string, unknown>>(
-  result: Result<T>,
-):
-  | ({ status: 'ok' } & T)
-  | { status: 'error'; msg: string; field?: string }
 
 export const LOCALES: Record<Locale, Record<string, string>>
 

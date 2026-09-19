@@ -34,9 +34,9 @@ export function ok(value) {
   return { ok: true, value }
 }
 
-function isBlank(value, type) {
+function isBlank(value) {
   if (value === undefined || value === null) return true
-  if (type !== 'string' && typeof value === 'string' && value.trim() === '') return true
+  if (typeof value === 'string' && value.trim() === '') return true
   return false
 }
 
@@ -62,7 +62,9 @@ function applyNumberConstraints(value, field, ctx) {
 function integer(value, field, ctx) {
   let n
   if (typeof value === 'number') {
-    if (!Number.isInteger(value)) return fail(ctx, CODES.invalid_integer)
+    if (!Number.isInteger(value) || !Number.isSafeInteger(value)) {
+      return fail(ctx, CODES.invalid_integer)
+    }
     n = value
   } else if (typeof value === 'string') {
     const trimmed = value.trim()
@@ -172,7 +174,7 @@ function timestamp(value, field, ctx) {
 }
 
 function resolveDateBound(bound) {
-  if (bound === 'today') return startOfDay(new Date())
+  if (bound === 'today' || bound === 'now') return startOfDay(new Date())
   return parseDate(bound)
 }
 
@@ -249,7 +251,7 @@ const handlers = {
 }
 
 export function checkValue(field, value, ctx) {
-  if (isBlank(value, field.type)) {
+  if (isBlank(value)) {
     if (field.default !== undefined) return ok(resolveDefault(field))
     if (!field.required) return ok(value === undefined ? undefined : null)
     return fail(ctx, CODES.required)
@@ -261,6 +263,48 @@ export function checkValue(field, value, ctx) {
 function assertNonNegInt(name, value, key) {
   if (!Number.isInteger(value) || value < 0) {
     throw new SchemaError(`Field "${key}": ${name} must be a non-negative integer`)
+  }
+}
+
+function assertFiniteNumber(name, value, key) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new SchemaError(`Field "${key}": ${name} must be a finite number`)
+  }
+}
+
+function assertDateBound(name, value, key) {
+  if (value === 'today' || value === 'now') return
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return
+  if (typeof value === 'string' && parseDate(value)) return
+  throw new SchemaError(`Field "${key}": ${name} must be a Date, parseable date string, 'today', or 'now'`)
+}
+
+function assertTimestampBound(name, value, key) {
+  if (value === 'today' || value === 'now') return
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return
+  if (typeof value === 'number' && Number.isFinite(value)) return
+  if (typeof value === 'string' && parseTimestamp(value)) return
+  throw new SchemaError(`Field "${key}": ${name} must be a Date, parseable timestamp, epoch ms, 'today', or 'now'`)
+}
+
+function validateBounds(type, def, key) {
+  if (def.min === undefined && def.max === undefined) return
+
+  if (type === 'integer' || type === 'decimal' || type === 'string' || type === 'array') {
+    if (def.min !== undefined) assertFiniteNumber('min', def.min, key)
+    if (def.max !== undefined) assertFiniteNumber('max', def.max, key)
+    return
+  }
+
+  if (type === 'date') {
+    if (def.min !== undefined) assertDateBound('min', def.min, key)
+    if (def.max !== undefined) assertDateBound('max', def.max, key)
+    return
+  }
+
+  if (type === 'timestamp') {
+    if (def.min !== undefined) assertTimestampBound('min', def.min, key)
+    if (def.max !== undefined) assertTimestampBound('max', def.max, key)
   }
 }
 
@@ -287,6 +331,9 @@ export function compileField(key, def) {
   let schema
 
   if (def.type === 'json_array') {
+    if (def.items !== undefined) {
+      throw new SchemaError(`Field "${key}": json_array cannot combine items and schema; use schema only`)
+    }
     type = 'array'
     items = compileField(`${key}[]`, {
       type: 'object',
@@ -318,12 +365,15 @@ export function compileField(key, def) {
   if (def.limitFromTodayPlus !== undefined) assertNonNegInt('limitFromTodayPlus', def.limitFromTodayPlus, key)
   if (def.limitFromTodayMinus !== undefined) assertNonNegInt('limitFromTodayMinus', def.limitFromTodayMinus, key)
 
+  validateBounds(type, def, key)
+
   return {
     type,
     key,
     label: def.label || def.desc || key,
     required: !!(def.required || def.notNull),
     default: def.default,
+    hasInline: Object.prototype.hasOwnProperty.call(def, 'value'),
     inlineValue: def.value,
     positive: !!def.positive,
     negative: !!def.negative,
@@ -352,16 +402,4 @@ export function compileSchema(schema) {
     compiled[key] = compileField(key, schema[key])
   }
   return compiled
-}
-
-export function hasInlineValues(compiled) {
-  return Object.values(compiled).some((field) => field.inlineValue !== undefined)
-}
-
-export function extractInline(compiled) {
-  const data = {}
-  for (const key of Object.keys(compiled)) {
-    data[key] = compiled[key].inlineValue
-  }
-  return data
 }

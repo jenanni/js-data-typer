@@ -1,6 +1,6 @@
 {
   "name": "js-data-typer",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Runtime validation and coercion with Result objects. Throws only on bad schemas; invalid input returns { ok: false }.",
   "type": "module",
   "main": "./src/index.js",

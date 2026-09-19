@@ -1,26 +1,34 @@
 import { SchemaError, ValidationError } from './errors.js'
 import { makeTranslator } from './messages.js'
-import { compileSchema, checkValue, extractInline, hasInlineValues } from './types.js'
+import { compileSchema, checkValue } from './types.js'
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
 
 function resolveData(compiled, data) {
-  if (data !== undefined) return data
-  if (hasInlineValues(compiled)) return extractInline(compiled)
-  throw new SchemaError('No data provided. Pass an object to validate() or set value on each field.')
+  const hasData = data !== undefined
+  const declaresInline = Object.values(compiled).some((field) => field.hasInline)
+
+  if (!hasData && !declaresInline) {
+    throw new SchemaError('No data provided. Pass an object to validate() or set value on each field.')
+  }
+
+  if (hasData && !isPlainObject(data)) {
+    return { invalid: true }
+  }
+
+  const source = {}
+  for (const key of Object.keys(compiled)) {
+    const field = compiled[key]
+    source[key] = field.inlineValue !== undefined
+      ? field.inlineValue
+      : (hasData ? data[key] : undefined)
+  }
+  return { invalid: false, source }
 }
 
 function run(compiled, data, t) {
-  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
-    return {
-      ok: false,
-      error: {
-        code: 'invalid_type',
-        field: undefined,
-        label: undefined,
-        message: t('invalid_type', 'data'),
-      },
-    }
-  }
-
   const out = {}
   for (const key of Object.keys(compiled)) {
     const field = compiled[key]
@@ -38,9 +46,20 @@ export function typer(schema, options = {}) {
   const t = makeTranslator(options)
 
   function validate(data) {
-    const source = resolveData(compiled, data)
-    const result = run(compiled, source, t)
-    return result.ok ? result : { ok: false, error: result.error }
+    const resolved = resolveData(compiled, data)
+    if (resolved.invalid) {
+      return {
+        ok: false,
+        error: {
+          code: 'invalid_type',
+          field: undefined,
+          label: undefined,
+          message: t('invalid_type', 'data'),
+        },
+      }
+    }
+
+    return run(compiled, resolved.source, t)
   }
 
   function parse(data) {
@@ -50,13 +69,4 @@ export function typer(schema, options = {}) {
   }
 
   return { validate, parse }
-}
-
-export function toStatus(result) {
-  if (result.ok) return { status: 'ok', ...result.data }
-  return {
-    status: 'error',
-    msg: result.error.message,
-    field: result.error.field,
-  }
 }

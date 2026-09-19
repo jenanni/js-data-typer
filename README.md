@@ -4,6 +4,10 @@ Runtime validation and coercion for JavaScript. Invalid **input** returns a Resu
 
 The published package is JavaScript (`src/*.js`). `types/index.d.ts` is only a declaration file so TypeScript projects get autocomplete; it is not the runtime.
 
+The package is **ESM-only** (`import`). On Node 18 and 20, `require()` will not work. Node 22+ can require ESM in some cases, but the supported API is `import`.
+
+`toStatus()` was removed in **0.2.0**. Use `validate()` and read `result.data` / `result.error`.
+
 ## Install
 
 ```bash
@@ -12,7 +16,7 @@ npm install js-data-typer
 
 ## Usage
 
-Define the schema, then validate the payload. Coerced values are in `result.data`.
+Define the schema, then validate the payload. Coerced values are in `result.data`. Validation stops at the **first** field error.
 
 ```js
 import { typer } from 'js-data-typer'
@@ -43,67 +47,38 @@ Same schema, but bad input throws `ValidationError` (`message`, `field`, `code`)
 const { entity_id, date } = schema.parse(req.body)
 ```
 
-A broken schema (missing `type`, unknown type, empty enum, …) always throws `SchemaError`, including with `validate()`.
+A broken schema (missing `type`, unknown type, empty enum, invalid `min`/`max`, …) always throws `SchemaError`, including with `validate()`.
 
-### Inline `value`
+### Inline `value` (merge with `validate(data)`)
 
-You can put the value on each field and call `validate()` with no argument:
+Each field can declare an inline `value`. Values are resolved **per key**:
+
+1. If the inline value is **defined** (including `null`), it wins.
+2. If the inline value is **`undefined`**, the value from `validate(data)` is used.
+3. You can mix both sources in the same schema.
 
 ```js
 const result = typer({
-  entity_id: { type: 'integer', value: req.body.entity_id, required: true, desc: 'Cliente' },
-  date: { type: 'date', value: req.body.date },
-}).validate()
+  // fixed from the session — wins over body.user_id
+  user_id: { type: 'integer', value: payload.us, required: true, desc: 'Usuario' },
+  // taken from the body when present
+  name: { type: 'string', value: undefined, required: true, desc: 'Nombre' },
+  date: { type: 'date', value: undefined },
+}).validate(req.body)
 
 if (!result.ok) return result.error
-const { entity_id, date } = result.data
+const { user_id, name, date } = result.data
 ```
 
-If you pass an object to `validate(data)`, that object is used and inline `value` is ignored.
-
-### `toStatus()`
-
-`validate()` always returns a Result with a nested `data` or `error` object:
+Only inline, no argument:
 
 ```js
-// success
-{ ok: true, data: { entity_id: 12, date: /* Date */ } }
-
-// failure
-{
-  ok: false,
-  error: {
-    message: 'Field Cliente is required',
-    field: 'entity_id',
-    code: 'required',
-    label: 'Cliente',
-  },
-}
+typer({
+  name: { type: 'string', value: req.body.name, required: true },
+}).validate()
 ```
 
-`toStatus(result)` flattens that into a single object, with `status: 'ok' | 'error'`:
-
-```js
-import { typer, toStatus } from 'js-data-typer'
-
-const typed = toStatus(schema.validate(req.body))
-
-if (typed.status === 'error') {
-  typed.msg    // 'Field Cliente is required'
-  typed.field  // 'entity_id'
-  return typed
-}
-
-typed.entity_id  // 12
-typed.date       // Date
-```
-
-| `validate()` | `toStatus(result)` |
-|---|---|
-| `{ ok: true, data: { entity_id, date } }` | `{ status: 'ok', entity_id, date }` |
-| `{ ok: false, error: { message, field, code, label } }` | `{ status: 'error', msg, field }` |
-
-`code` and `label` are not copied. Use `validate()` if you need them.
+If you call `validate()` with no data and **no** field declares `value`, that throws `SchemaError` (missing argument). If a field declares `value: undefined` and is `required`, you get a normal `{ ok: false, error: { code: 'required' } }`.
 
 ## Arrays of objects
 
@@ -156,6 +131,8 @@ typer({
 })
 ```
 
+Do not pass both `items` and `schema` on a `json_array` field — that throws `SchemaError`.
+
 A nested error uses the item path, e.g. `items[0].article_id`.
 
 A single object uses `type: 'object'` (alias `json`) with the same `schema` option.
@@ -167,13 +144,14 @@ A single object uses `type: 'object'` (alias `json`) with the same `schema` opti
 | `type` | required |
 | `label` / `desc` | used in messages (`desc` is an alias) |
 | `required` / `notNull` | aliases |
-| `default` | used when the value is `null` / `undefined` / blank. Dates: `'today'`. Timestamps: `'now'` |
+| `default` | used when the value is `null` / `undefined` / blank (`''`). Dates: `'today'`. Timestamps: `'now'` |
+| `value` | inline value; see merge rules above |
 | `positive` | rejects numbers `< 0` (zero is allowed; combine with `notZero`) |
 | `negative` | rejects numbers `> 0` |
 | `notZero` | rejects `0` |
 | `notEmpty` | rejects empty string / array / object |
 | `trim`, `lowercase` / `toLowerCase` | strings |
-| `min`, `max` | numbers, string length, array length, dates |
+| `min`, `max` | numbers, string length, array length, dates / timestamps (validated at schema compile time) |
 | `roundTo` | decimal places |
 | `values` / `oneOf` | for `enum` |
 | `items` | array item type name (`'integer'`) or nested field schema |
@@ -188,9 +166,10 @@ Aliases: `oneOf` → `enum`, `json` → `object`, `json_array` → array of obje
 
 Coercion:
 
-- integer / decimal from numeric strings (`"12"`, `"1.50"`). `"12abc"` is rejected.
+- integer / decimal from numeric strings (`"12"`, `"1.50"`). `"12abc"` is rejected. Integers must be safe integers.
 - boolean from `true`/`false`, `"true"`/`"false"`/`"t"`/`"f"`, `1`/`0`
-- date from `Date`, `YYYY-MM-DD`, `DD/MM/YYYY`, `DD-MM-YYYY` (local calendar day, no UTC shift)
+- date from `Date`, `YYYY-MM-DD`, `YYYY/MM/DD`, `DD/MM/YYYY`, `DD-MM-YYYY`, and two-digit years (`19/09/26` → 2026). Local calendar day; trailing junk is rejected.
+- timestamp from `Date`, epoch milliseconds, ISO (`2026-09-19T15:30:00Z`), or the same day formats as `date` with an optional local time (`09/10/2026 10:00`). Day order matches `date` (`DD/MM`).
 
 ```js
 typer({

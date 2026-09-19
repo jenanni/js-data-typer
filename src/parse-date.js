@@ -1,7 +1,3 @@
-function pad2(n) {
-  return String(n).padStart(2, '0')
-}
-
 export function startOfDay(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate())
 }
@@ -37,7 +33,7 @@ function expandYear(year) {
 /**
  * Parse a calendar date as a local Date at 00:00:00.
  * Accepts Date, YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, YYYY/MM/DD.
- * ISO datetimes use the calendar day in local time.
+ * ISO datetimes use only the calendar day before the T.
  */
 export function parseDate(value) {
   if (value instanceof Date) {
@@ -49,7 +45,7 @@ export function parseDate(value) {
   const raw = value.trim()
   if (!raw) return null
 
-  const datePart = raw.length > 10 && raw.includes('T') ? raw.slice(0, 10) : raw.slice(0, 10)
+  const datePart = raw.includes('T') ? raw.slice(0, raw.indexOf('T')) : raw
 
   let match = datePart.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/)
   if (match) {
@@ -64,6 +60,35 @@ export function parseDate(value) {
   return null
 }
 
+function parseClock(timePart) {
+  const match = timePart.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.(\d{1,3}))?$/)
+  if (!match) return null
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  const seconds = match[3] !== undefined ? Number(match[3]) : 0
+  const millis = match[4] !== undefined ? Number(match[4].padEnd(3, '0')) : 0
+
+  if (hours > 23 || minutes > 59 || seconds > 59) return null
+  return { hours, minutes, seconds, millis }
+}
+
+function applyLocalTime(day, clock) {
+  return new Date(
+    day.getFullYear(),
+    day.getMonth(),
+    day.getDate(),
+    clock.hours,
+    clock.minutes,
+    clock.seconds,
+    clock.millis,
+  )
+}
+
+/**
+ * Parse a timestamp.
+ * Accepts Date, epoch ms, ISO strings, and DD/MM/YYYY[ HH:mm[:ss]] (same day order as parseDate).
+ */
 export function parseTimestamp(value) {
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? null : new Date(value.getTime())
@@ -80,13 +105,21 @@ export function parseTimestamp(value) {
   const raw = value.trim()
   if (!raw) return null
 
+  if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) {
+    const date = new Date(raw)
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  const spaceSplit = raw.match(/^(.+?)\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\.\d{1,3})?)$/)
+  if (spaceSplit) {
+    const day = parseDate(spaceSplit[1])
+    const clock = parseClock(spaceSplit[2])
+    if (!day || !clock) return null
+    return applyLocalTime(day, clock)
+  }
+
   const asDate = parseDate(raw)
-  if (asDate && !raw.includes('T') && !raw.includes(':')) return asDate
+  if (asDate) return asDate
 
-  const date = new Date(raw)
-  return Number.isNaN(date.getTime()) ? null : date
-}
-
-export function dateToISODate(date) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+  return null
 }

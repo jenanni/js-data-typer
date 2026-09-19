@@ -39,3 +39,9 @@ test('boolean default', () => {
   const schema = typer({ on: { type: 'boolean', default: true } })
   assert.equal(schema.validate({}).data.on, true)
 })
+
+test('empty string uses default', () => {
+  const schema = typer({ name: { type: 'string', default: 'X' } })
+  assert.equal(schema.validate({ name: '' }).data.name, 'X')
+  assert.equal(schema.validate({ name: '   ' }).data.name, 'X')
+})

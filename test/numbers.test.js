@@ -48,3 +48,9 @@ test('decimal coerces and rounds', () => {
   assert.equal(schema.validate({ n: '1.456' }).data.n, 1.46)
   assert.equal(schema.validate({ n: 'x' }).ok, false)
 })
+
+test('rejects unsafe integers from number and string', () => {
+  const schema = typer({ n: { type: 'integer' } })
+  assert.equal(schema.validate({ n: 1e21 }).error.code, CODES.invalid_integer)
+  assert.equal(schema.validate({ n: '1e21' }).error.code, CODES.invalid_integer)
+})

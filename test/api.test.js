@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { typer, toStatus, SchemaError, ValidationError, CODES } from '../src/index.js'
+import { typer, SchemaError, ValidationError, CODES } from '../src/index.js'
 
 test('throws SchemaError when schema is not an object', () => {
   assert.throws(() => typer(null), SchemaError)
@@ -62,22 +62,58 @@ test('inline values work when validate is called without data', () => {
   assert.equal(result.data.name, 'Ana')
 })
 
-test('passed data wins over inline value', () => {
+test('defined inline wins over data', () => {
   const result = typer({
     name: { type: 'string', value: 'Ana' },
   }).validate({ name: 'Luis' })
 
+  assert.equal(result.data.name, 'Ana')
+})
+
+test('undefined inline falls back to data', () => {
+  const result = typer({
+    name: { type: 'string', value: undefined, required: true },
+  }).validate({ name: 'Luis' })
+
+  assert.equal(result.ok, true)
   assert.equal(result.data.name, 'Luis')
 })
 
-test('toStatus maps result to status envelope', () => {
-  const schema = typer({ id: { type: 'integer', required: true, desc: 'Id' } })
-  assert.deepEqual(toStatus(schema.validate({ id: 1 })), { status: 'ok', id: 1 })
+test('mixes inline and data per key', () => {
+  const result = typer({
+    user_id: { type: 'integer', value: 9, required: true },
+    name: { type: 'string', value: undefined, required: true },
+  }).validate({ name: 'Ana', user_id: 1 })
 
-  const fail = toStatus(schema.validate({}))
-  assert.equal(fail.status, 'error')
-  assert.equal(fail.field, 'id')
-  assert.match(fail.msg, /Id/)
+  assert.equal(result.ok, true)
+  assert.equal(result.data.user_id, 9)
+  assert.equal(result.data.name, 'Ana')
+})
+
+test('undefined inline with required returns validation error', () => {
+  const result = typer({
+    name: { type: 'string', value: undefined, required: true, desc: 'Nombre' },
+  }).validate()
+
+  assert.equal(result.ok, false)
+  assert.equal(result.error.code, CODES.required)
+  assert.equal(result.error.field, 'name')
+})
+
+test('null inline wins over data', () => {
+  const result = typer({
+    name: { type: 'string', value: null },
+  }).validate({ name: 'Ana' })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.name, null)
+})
+
+test('throws SchemaError when no data and no inline declared', () => {
+  assert.throws(
+    () => typer({ name: { type: 'string', required: true } }).validate(),
+    SchemaError,
+  )
 })
 
 test('spanish locale', () => {
@@ -87,4 +123,24 @@ test('spanish locale', () => {
   ).validate({})
 
   assert.equal(result.error.message, 'El campo id no puede estar vacío')
+})
+
+test('throws SchemaError for invalid numeric min', () => {
+  assert.throws(
+    () => typer({ n: { type: 'integer', min: 'abc' } }),
+    /min must be a finite number/,
+  )
+})
+
+test('throws SchemaError when json_array has items and schema', () => {
+  assert.throws(
+    () => typer({
+      rows: {
+        type: 'json_array',
+        items: 'integer',
+        schema: { id: { type: 'integer' } },
+      },
+    }),
+    /cannot combine items and schema/,
+  )
 })
