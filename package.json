@@ -1,6 +1,6 @@
 {
   "name": "js-data-typer",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "Payload typer for JavaScript APIs: plain-object schemas, coercion, and Result returns. Throws only on bad schemas.",
   "type": "module",
   "main": "./src/index.js",

@@ -1,21 +1,51 @@
 # js-data-typer
 
-A small **payload typer for JavaScript APIs**: validate and coerce `req.body` / `req.query` with a plain object schema, then read the result as a Result (`{ ok, data }` / `{ ok: false, error }`).
+**Validate and coerce API payloads in plain JavaScript — without a fluent schema DSL and without throwing on bad input.**
 
-Built for Node/Express-style controllers where you want:
+```js
+import { typer } from 'js-data-typer'
 
-- schema as a plain object (`type`, `required`, `desc`), not a fluent chain
-- coercion out of the box (`"12"` → number, `"19/09/2026"` → `Date`)
-- bad **input** as a return value, not a throw
-- zero dependencies and ESM
+const createInvoice = typer({
+  entity_id: { type: 'integer', required: true, notZero: true, desc: 'Customer' },
+  date: { type: 'date', required: true, desc: 'Date' },
+  total: { type: 'decimal', required: true, positive: true, roundTo: 2 },
+})
 
-It is **not** a TypeScript-first schema library (use Zod for that), not a form library (Yup), and not JSON Schema (Ajv). Invalid **schemas** still throw `SchemaError`.
+app.post('/api/invoices', (req, res) => {
+  const result = createInvoice.validate(req.body)
+  if (!result.ok) {
+    return res.status(400).json({
+      error: result.error.message,
+      field: result.error.field,
+      code: result.error.code,
+    })
+  }
 
-The published package is JavaScript (`src/*.js`). `types/index.d.ts` is only a declaration file so TypeScript projects get autocomplete; it is not the runtime.
+  const { entity_id, date, total } = result.data
+  // entity_id is a number, date is a Date, total is rounded
+})
+```
 
-The package is **ESM-only** (`import`). On Node 18 and 20, `require()` will not work. Node 22+ can require ESM in some cases, but the supported API is `import`.
+Built for **Node/Express-style APIs** (and similar) where `req.body` / `req.query` arrive as strings and you want typed values before business logic.
 
-`toStatus()` was removed in **0.2.0**. Use `validate()` and read `result.data` / `result.error`.
+### Why this instead of Zod / Joi / Yup?
+
+| You want… | Use |
+|---|---|
+| TypeScript-first schemas + `z.infer` | [Zod](https://zod.dev) |
+| Forms / Formik | [Yup](https://github.com/jquense/yup) |
+| JSON Schema / OpenAPI contracts | [Ajv](https://ajv.js.org) |
+| Plain JS controllers, object schemas, coercion, Result returns | **js-data-typer** |
+
+What you get here:
+
+- schema as a **plain object** (`type`, `required`, `desc`) — readable in a controller
+- **coercion built in** (`"12"` → `12`, `"19/09/2026"` → local `Date`, `"true"` → boolean)
+- bad **input** → `{ ok: false, error }` (no try/catch for validation)
+- bad **schema** → throws `SchemaError`
+- **zero dependencies**, ESM
+
+If your team already lives in TypeScript + Zod, stay there. If you write Express in JavaScript and miss a small typer that feels like the rest of your code, this is for you.
 
 ## Install
 
@@ -23,16 +53,18 @@ The package is **ESM-only** (`import`). On Node 18 and 20, `require()` will not 
 npm install js-data-typer
 ```
 
+ESM-only (`import`). On Node 18/20, `require()` will not work. The runtime is JavaScript; `types/index.d.ts` is only for TypeScript autocomplete.
+
 ## Usage
 
-Define the schema, then validate the payload. Coerced values are in `result.data`. Validation stops at the **first** field error.
+Define the schema once, then validate. Coerced values are in `result.data`. Validation stops at the **first** field error.
 
 ```js
 import { typer } from 'js-data-typer'
 
 const schema = typer({
-  entity_id: { type: 'integer', required: true, notZero: true, desc: 'Cliente' },
-  date: { type: 'date', required: true, desc: 'Fecha' },
+  entity_id: { type: 'integer', required: true, notZero: true, desc: 'Customer' },
+  date: { type: 'date', required: true, desc: 'Date' },
 })
 
 const result = schema.validate(req.body)
@@ -47,6 +79,8 @@ Examples of coercion:
 - `date: '19/09/2026'` → `Date`
 
 On failure, `result.error` is `{ message, field, code, label }`. `validate()` does not throw for bad input.
+
+`toStatus()` was removed in **0.2.0**. Use `validate()` and read `result.data` / `result.error`.
 
 ### `parse()`
 
@@ -144,7 +178,43 @@ Do not pass both `items` and `schema` on a `json_array` field — that throws `S
 
 A nested error uses the item path, e.g. `items[0].article_id`.
 
-A single object uses `type: 'object'` (alias `json`) with the same `schema` option.
+## Nested objects
+
+`type: 'object'` (alias `json`) can take a `schema`. Fields inside that schema can themselves be `object` with another `schema` — nesting is recursive.
+
+```js
+const schema = typer({
+  customer: {
+    type: 'object',
+    required: true,
+    schema: {
+      name: { type: 'string', required: true, desc: 'Name' },
+      address: {
+        type: 'object',
+        schema: {
+          city: { type: 'string', required: true, desc: 'City' },
+          zip: { type: 'integer' },
+        },
+      },
+    },
+  },
+})
+
+const result = schema.validate({
+  customer: {
+    name: 'Ana',
+    address: { city: 'Rosario', zip: '2000' },
+  },
+})
+if (!result.ok) return result.error
+
+result.data.customer.address.city  // 'Rosario'
+result.data.customer.address.zip   // 2000
+```
+
+A nested error uses the dotted path, e.g. `customer.address.city`.
+
+Without `schema`, an `object` field only checks that the value is a plain object and leaves it as-is.
 
 ## Field options
 
