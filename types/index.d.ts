@@ -47,6 +47,24 @@ export type FieldType =
   | 'json'
   | 'json_array'
 
+export type SanitizeNamed =
+  | 'stripAccents'
+  | 'ascii'
+  | 'stripControls'
+  | 'stripDigits'
+  | 'digitsOnly'
+  | 'lettersOnly'
+  | 'alphanumeric'
+  | 'collapseWhitespace'
+  | 'stripQuotes'
+  | 'uppercase'
+  | 'lowercase'
+
+export type SanitizeStep =
+  | SanitizeNamed
+  | { replace: [RegExp | string, string?] }
+  | { remove: RegExp | string }
+
 export interface FieldSchema {
   type: FieldType
   /** Human label used in error messages. Alias: `desc`. */
@@ -69,6 +87,10 @@ export interface FieldSchema {
   trim?: boolean
   lowercase?: boolean
   toLowerCase?: boolean
+  uppercase?: boolean
+  toUpperCase?: boolean
+  /** Named and/or custom regex transforms, applied in order after trim/case flags. */
+  sanitize?: SanitizeStep | SanitizeStep[]
   /**
    * For integer/decimal/string/array: a finite number.
    * For date: Date, parseable date string, `'today'`, or `'now'`.

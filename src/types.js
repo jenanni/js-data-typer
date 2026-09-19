@@ -1,5 +1,6 @@
 import { SchemaError, CODES } from './errors.js'
 import { parseDate, parseTimestamp, startOfDay, addDays, compareDay } from './parse-date.js'
+import { compileSanitize, applySanitize } from './sanitize.js'
 
 const TYPE_ALIASES = {
   oneOf: 'enum',
@@ -106,6 +107,8 @@ function string(value, field, ctx) {
   let out = value
   if (field.trim) out = out.trim()
   if (field.lowercase) out = out.toLowerCase()
+  if (field.uppercase) out = out.toUpperCase()
+  if (field.sanitize) out = applySanitize(out, field.sanitize)
 
   if (field.required && !out.trim()) return fail(ctx, CODES.required)
   if (field.notEmpty && !out.trim()) return fail(ctx, CODES.empty)
@@ -367,6 +370,16 @@ export function compileField(key, def) {
 
   validateBounds(type, def, key)
 
+  if (def.sanitize !== undefined && type !== 'string') {
+    throw new SchemaError(`Field "${key}": sanitize is only supported on string fields`)
+  }
+
+  const wantLower = !!(def.lowercase || def.toLowerCase)
+  const wantUpper = !!(def.uppercase || def.toUpperCase)
+  if (wantLower && wantUpper) {
+    throw new SchemaError(`Field "${key}": cannot set both uppercase and lowercase`)
+  }
+
   return {
     type,
     key,
@@ -380,7 +393,9 @@ export function compileField(key, def) {
     notZero: !!def.notZero,
     notEmpty: !!def.notEmpty,
     trim: !!def.trim,
-    lowercase: !!(def.lowercase || def.toLowerCase),
+    lowercase: wantLower,
+    uppercase: wantUpper,
+    sanitize: compileSanitize(def.sanitize, key),
     min: def.min,
     max: def.max,
     roundTo: def.roundTo,

@@ -229,13 +229,59 @@ Without `schema`, an `object` field only checks that the value is a plain object
 | `negative` | rejects numbers `> 0` |
 | `notZero` | rejects `0` |
 | `notEmpty` | rejects empty string / array / object |
-| `trim`, `lowercase` / `toLowerCase` | strings |
+| `trim`, `lowercase` / `toLowerCase`, `uppercase` / `toUpperCase` | strings (case flags run before `sanitize`) |
+| `sanitize` | string transforms: named steps and/or `{ replace }` / `{ remove }` with custom regex — see below |
 | `min`, `max` | numbers, string length, array length, dates / timestamps (validated at schema compile time) |
 | `roundTo` | decimal places |
 | `values` / `oneOf` | for `enum` |
 | `items` | array item type name (`'integer'`) or nested field schema |
 | `schema` | nested object / `json_array` item shape |
 | `limitFromTodayPlus` / `limitFromTodayMinus` | date bounds in days from today |
+
+## String sanitize
+
+`sanitize` is a transform pipeline for `string` fields (it does not validate). Steps run in order after `trim` / case flags. A step is a **name** or a **custom regex** object.
+
+| Named step | Effect |
+|---|---|
+| `stripAccents` | NFD + remove combining marks (`Ñ`→`N`, `á`→`a`) |
+| `ascii` | Keep printable ASCII only (0x20–0x7E) |
+| `stripControls` | Remove C0/C1 controls and `U+FFFD` |
+| `stripDigits` | Remove `0-9` |
+| `digitsOnly` | Keep digits only |
+| `lettersOnly` | Keep Unicode letters only |
+| `alphanumeric` | Keep letters and digits |
+| `collapseWhitespace` | Collapse whitespace runs to a single space |
+| `stripQuotes` | Remove `'` and `"` |
+| `uppercase` / `lowercase` | Case (also usable inside the pipeline for order) |
+
+AFIP-style / fixed-width TXT (no eñes or accents):
+
+```js
+razon_social: {
+  type: 'string',
+  required: true,
+  trim: true,
+  sanitize: ['stripAccents', 'ascii', 'collapseWhitespace', 'uppercase'],
+  desc: 'Razón social',
+}
+```
+
+Custom regex (`RegExp` or string; strings compile with the `g` flag):
+
+```js
+nombre: {
+  type: 'string',
+  sanitize: [
+    'stripAccents',
+    { replace: [/[^A-Za-z0-9 ./-]/g, ''] },
+    { remove: /\s{2,}/g },
+    'collapseWhitespace',
+  ],
+}
+```
+
+Unknown step names or malformed `{ replace }` / `{ remove }` throw `SchemaError` when the schema is created.
 
 ## Types
 
