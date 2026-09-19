@@ -1,0 +1,45 @@
+{
+  "name": "js-data-typer",
+  "version": "0.1.1",
+  "description": "Runtime validation and coercion with Result objects. Throws only on bad schemas; invalid input returns { ok: false }.",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "types",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [
+    "validation",
+    "coerce",
+    "schema",
+    "types",
+    "result"
+  ],
+  "author": "Jose Nanni <jenanni@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jenanni/js-data-typer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jenanni/js-data-typer/issues"
+  },
+  "homepage": "https://github.com/jenanni/js-data-typer#readme",
+  "engines": {
+    "node": ">=18"
+  }
+}
